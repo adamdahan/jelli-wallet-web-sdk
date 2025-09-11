@@ -1,0 +1,142 @@
+{
+  "info": {
+    "name": "Jelli OAuth Backend (Local Dev)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Minimal collection to exercise /oauth/start, /oauth/complete, /oauth/cancel, and /health. Includes PKCE generation in pre-request script for /oauth/start."
+  },
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "health"
+          ]
+        }
+      }
+    },
+    {
+      "name": "OAuth Start (generate PKCE)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Generate code_verifier and code_challenge (S256) using CryptoJS only",
+              "function toBase64UrlWA(wa) {",
+              "  const b64 = CryptoJS.enc.Base64.stringify(wa);",
+              "  return b64.replace(/=/g, '').replace(/\\+/g, '-').replace(/\\//g, '_');",
+              "}",
+              "const rand = CryptoJS.lib.WordArray.random(32);",
+              "const verifier = toBase64UrlWA(rand);",
+              "const hash = CryptoJS.SHA256(verifier);",
+              "const challenge = toBase64UrlWA(hash);",
+              "pm.environment.set('codeVerifier', verifier);",
+              "pm.environment.set('codeChallenge', challenge);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "pm.test('has sessionId and authUrl', function () {",
+              "  pm.expect(json.sessionId).to.be.a('string');",
+              "  pm.expect(json.authUrl).to.be.a('string');",
+              "});",
+              "pm.environment.set('sessionId', json.sessionId);",
+              "pm.environment.set('authUrl', json.authUrl);",
+              "console.log('Open this URL in a system browser:', json.authUrl);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Jelli-Api-Key", "value": "{{apiKey}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"codeChallenge\": \"{{codeChallenge}}\",\n  \"method\": \"S256\",\n  \"appInfo\": { \"id\": \"local-dev\", \"environment\": \"development\" },\n  \"returnUrl\": \"{{returnUrl}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/oauth/start",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "oauth",
+            "start"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Complete",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sessionId\": \"{{sessionId}}\",\n  \"codeVerifier\": \"{{codeVerifier}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/oauth/complete",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "oauth",
+            "complete"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Cancel Session",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sessionId\": \"{{sessionId}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/oauth/cancel",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "oauth",
+            "cancel"
+          ]
+        }
+      }
+    }
+  ],
+  "event": [],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "apiKey", "value": "dev" },
+    { "key": "codeVerifier", "value": "" },
+    { "key": "codeChallenge", "value": "" },
+    { "key": "sessionId", "value": "" },
+    { "key": "authUrl", "value": "" },
+    { "key": "returnUrl", "value": "exp://127.0.0.1:19000/--/oauth/callback" }
+  ]
+}
