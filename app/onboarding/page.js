@@ -5,7 +5,7 @@ import '../../lib/crypto/init';
 import { challengeS256, generateVerifier } from '../../lib/pkce';
 import { oauthStart } from '../../lib/api';
 import { loadConfig, loadSession, saveSession } from '../../lib/storage';
-import { getUserIdentifier, extractEmail } from '../../lib/auth-utils';
+import { getUserIdentifier, extractEmail, extractAvatar, extractDisplayName } from '../../lib/auth-utils';
 import { installJuiceboxAuthProvider } from '../../lib/juicebox-tokens';
 import { makeClient, registerShare } from '../../lib/juicebox';
 import { prepareBackupFromMnemonic, recoverMnemonicFromBackup } from '../../lib/seedless';
@@ -13,31 +13,325 @@ import { putBackup, listBackups, getBackup } from '../../lib/data-api';
 import { WalletManager, HDWalletEngine, InMemoryWalletStore, InMemorySecretVault, ChainType } from '@iheartsolana/jelli-core';
 import { storePasswordEncryptedSeed } from '../../lib/password-vault';
 
-function Screen({ children }) {
-  return <section style={{ maxWidth: 520, margin: '40px auto' }}>{children}</section>;
-}
-
-function Title({ children }) {
-  return <h2 style={{ fontSize: 22, margin: '0 0 10px' }}>{children}</h2>;
-}
-
-function Sub({ children }) {
-  return <div style={{ opacity: 0.75, marginBottom: 16 }}>{children}</div>;
-}
-
-function Button({ onClick, children, variant = 'primary', disabled }) {
-  const style = variant === 'primary'
-    ? { padding: '12px 16px', borderRadius: 8, border: '1px solid #1d4ed8', background: '#3b82f6', color: '#fff', width: '100%' }
-    : { padding: '12px 16px', borderRadius: 8, border: '1px solid #8884', background: 'transparent', width: '100%' };
-  return <button onClick={onClick} disabled={disabled} style={style}>{children}</button>;
-}
-
-function PinInput({ value, onChange, label = 'Enter 4‑digit PIN' }) {
+// Design System Components
+function Screen({ children, className = '' }) {
   return (
-    <div style={{ margin: '12px 0' }}>
-      <label style={{ display: 'block', fontSize: 12, opacity: 0.7, marginBottom: 6 }}>{label}</label>
-      <input value={value} onChange={(e) => onChange(e.target.value)} maxLength={4} inputMode="numeric" pattern="[0-9]*"
-        style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid #8884' }} />
+    <div style={{
+      minHeight: '100vh',
+      background: 'linear-gradient(135deg, #fef7f7 0%, #fdf2f8 50%, #fff1f2 100%)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '1rem'
+    }}>
+      <div style={{
+        width: '100%',
+        maxWidth: '28rem',
+        margin: '0 auto'
+      }}>
+        <div style={{
+          background: 'white',
+          borderRadius: '1.5rem',
+          boxShadow: '0 4px 12px rgba(255, 142, 200, 0.15)',
+          border: '1px solid #fce7f3',
+          padding: '2rem',
+          position: 'relative',
+          overflow: 'hidden'
+        }}>
+          {/* Subtle background pattern with brand pink */}
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: '8rem',
+            height: '8rem',
+            background: 'linear-gradient(225deg, rgba(255, 142, 200, 0.1) 0%, transparent 100%)',
+            borderRadius: '50%',
+            transform: 'translate(4rem, -4rem)',
+            opacity: 0.8
+          }}></div>
+          <div style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            width: '6rem',
+            height: '6rem',
+            background: 'linear-gradient(45deg, rgba(255, 142, 200, 0.08) 0%, transparent 100%)',
+            borderRadius: '50%',
+            transform: 'translate(-3rem, 3rem)',
+            opacity: 0.8
+          }}></div>
+          <div style={{ position: 'relative', zIndex: 10 }}>
+            {children}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Title({ children, className = '' }) {
+  return <h1 style={{
+    fontSize: '1.5rem',
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: '0.75rem',
+    textAlign: 'center'
+  }}>{children}</h1>;
+}
+
+function Subtitle({ children, className = '' }) {
+  return <p style={{
+    color: '#4b5563',
+    textAlign: 'center',
+    marginBottom: '1.5rem',
+    lineHeight: '1.625'
+  }}>{children}</p>;
+}
+
+function Button({ onClick, children, variant = 'primary', disabled, className = '', size = 'default', loading = false }) {
+  const baseStyle = {
+    width: '100%',
+    fontWeight: '600',
+    borderRadius: '1rem',
+    transition: 'all 0.2s',
+    border: 'none',
+    cursor: (disabled && !loading) ? 'not-allowed' : 'pointer',
+    fontSize: size === 'large' ? '1.125rem' : '1rem',
+    padding: size === 'large' ? '1rem 2rem' : '0.75rem 1.5rem'
+  };
+  
+  let variantStyle = {};
+  if (variant === 'primary') {
+    if (disabled && !loading) {
+      variantStyle = {
+        background: '#e5e7eb',
+        color: '#9ca3af'
+      };
+    } else {
+      variantStyle = {
+        background: '#FF8EC8',
+        color: 'white',
+        boxShadow: '0 2px 8px rgba(255, 142, 200, 0.3)',
+        transform: 'translateY(0)'
+      };
+    }
+  } else if (variant === 'secondary') {
+    variantStyle = {
+      background: '#f9fafb',
+      color: '#374151',
+      border: '2px solid #e5e7eb'
+    };
+  } else if (variant === 'outline') {
+    variantStyle = {
+      background: 'transparent',
+      color: '#FF8EC8',
+      border: '2px solid #FF8EC8'
+    };
+  }
+  
+  return (
+    <button 
+      onClick={onClick} 
+      disabled={disabled} 
+      style={{...baseStyle, ...variantStyle}}
+      onMouseEnter={(e) => {
+        if (!disabled && variant === 'primary' && !loading) {
+          e.target.style.transform = 'translateY(-1px)';
+          e.target.style.boxShadow = '0 4px 12px rgba(255, 142, 200, 0.4)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!disabled && variant === 'primary' && !loading) {
+          e.target.style.transform = 'translateY(0)';
+          e.target.style.boxShadow = '0 2px 8px rgba(255, 142, 200, 0.3)';
+        }
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function WhiteSpinner({ size = 'default' }) {
+  const spinnerSize = size === 'large' ? '1.5rem' : '1rem';
+  
+  return (
+    <div style={{
+      width: spinnerSize,
+      height: spinnerSize,
+      border: '2px solid rgba(255, 255, 255, 0.3)',
+      borderTop: '2px solid white',
+      borderRadius: '50%',
+      animation: 'spin 1s linear infinite',
+      margin: '0 auto'
+    }}></div>
+  );
+}
+
+function PinInput({ value, onChange, label = 'Enter 4-digit PIN' }) {
+  const digits = value.split('');
+  
+  return (
+    <div style={{ marginBottom: '1.5rem' }}>
+      <label style={{
+        display: 'block',
+        fontSize: '0.875rem',
+        fontWeight: '500',
+        color: '#374151',
+        marginBottom: '1rem',
+        textAlign: 'center'
+      }}>{label}</label>
+      <div 
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          gap: '0.75rem',
+          position: 'relative'
+        }}
+        onClick={() => {
+          // Focus the hidden input when clicking on the PIN display
+          const input = document.querySelector('input[type="tel"]');
+          if (input) input.focus();
+        }}
+      >
+        {[0, 1, 2, 3].map((index) => (
+          <div
+            key={index}
+            style={{
+              width: '3.5rem',
+              height: '3.5rem',
+              borderRadius: '1rem',
+              border: `2px solid ${digits[index] ? '#FF8EC8' : '#e5e7eb'}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: digits[index] ? '#fdf2f8' : '#f9fafb',
+              transition: 'all 0.2s',
+              cursor: 'pointer'
+            }}
+          >
+            <span style={{
+              fontSize: '1.5rem',
+              fontWeight: 'bold',
+              color: '#1f2937'
+            }}>
+              {digits[index] ? '•' : ''}
+            </span>
+          </div>
+        ))}
+        {/* Invisible input overlay */}
+        <input
+          type="tel"
+          value={value}
+          onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 4))}
+          maxLength={4}
+          inputMode="numeric"
+          pattern="[0-9]*"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            opacity: 0,
+            cursor: 'pointer',
+            fontSize: '1rem'
+          }}
+          autoFocus
+          placeholder="0000"
+        />
+      </div>
+    </div>
+  );
+}
+
+function PasswordInput({ value, onChange, placeholder, className = '' }) {
+  const [showPassword, setShowPassword] = useState(false);
+  
+  return (
+    <div style={{ position: 'relative', marginBottom: '1rem' }}>
+      <input
+        type={showPassword ? 'text' : 'password'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{
+          width: '100%',
+          padding: '1rem 3rem 1rem 1rem',
+          border: '2px solid #e5e7eb',
+          borderRadius: '1rem',
+          background: '#f9fafb',
+          fontSize: '1rem',
+          transition: 'all 0.2s',
+          outline: 'none',
+          boxSizing: 'border-box'
+        }}
+        onFocus={(e) => {
+          e.target.style.borderColor = '#FF8EC8';
+          e.target.style.background = 'white';
+        }}
+        onBlur={(e) => {
+          e.target.style.borderColor = '#e5e7eb';
+          e.target.style.background = '#f9fafb';
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => setShowPassword(!showPassword)}
+        style={{
+          position: 'absolute',
+          right: '1rem',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          fontSize: '1.2rem',
+          color: '#6b7280'
+        }}
+      >
+        {showPassword ? '🙈' : '👁️'}
+      </button>
+    </div>
+  );
+}
+
+function LoadingSpinner({ size = 'default' }) {
+  const spinnerSize = size === 'large' ? '3rem' : '1.5rem';
+  
+  return (
+    <div style={{
+      width: spinnerSize,
+      height: spinnerSize,
+      border: '3px solid #f3f4f6',
+      borderTop: '3px solid #FF8EC8',
+      borderRadius: '50%',
+      animation: 'spin 1s linear infinite',
+      margin: '0 auto'
+    }}></div>
+  );
+}
+
+function ProgressBar({ currentStep, totalSteps }) {
+  const progress = (currentStep / totalSteps) * 100;
+  
+  return (
+    <div style={{ marginBottom: '2rem' }}>
+      <div style={{
+        width: '100%',
+        background: '#f3f4f6',
+        borderRadius: '9999px',
+        height: '0.5rem'
+      }}>
+        <div style={{
+          background: '#FF8EC8',
+          height: '0.5rem',
+          borderRadius: '9999px',
+          width: `${progress}%`,
+          transition: 'all 0.3s ease-out'
+        }}></div>
+      </div>
     </div>
   );
 }
@@ -46,14 +340,32 @@ export default function Onboarding() {
   const [cfg, setCfg] = useState({ baseUrl: '', apiKey: '', returnUrl: '' });
   const [session, setSession] = useState({});
   const [email, setEmail] = useState('');
-  const [step, setStep] = useState('SIGN_IN'); // SIGN_IN | CHOOSE | PIN | CREATING | COMPLETE
-  const [mode, setMode] = useState('CREATE'); // CREATE | RECOVER (recover UI can be added next)
+  const [avatar, setAvatar] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [step, setStep] = useState('SIGN_IN'); // SIGN_IN | PROFILE | CHOOSE | PIN | PIN_CONFIRM | PASSWORD | CREATING | COMPLETE
+  const [mode, setMode] = useState('CREATE'); // CREATE | RECOVER
   const [pin, setPin] = useState('');
   const [pin2, setPin2] = useState('');
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const [recoveredMnemonic, setRecoveredMnemonic] = useState('');
+  
+  const totalSteps = mode === 'RECOVER' ? 6 : 7; // Sign in, Profile, Choose, PIN, PIN_CONFIRM, Password, Complete
+  const getCurrentStepNumber = () => {
+    switch (step) {
+      case 'SIGN_IN': return 1;
+      case 'PROFILE': return 2;
+      case 'CHOOSE': return 3;
+      case 'PIN': return 4;
+      case 'PIN_CONFIRM': return 5;
+      case 'PASSWORD': return mode === 'RECOVER' ? 5 : 6;
+      case 'CREATING': return mode === 'RECOVER' ? 5 : 6;
+      case 'COMPLETE': return mode === 'RECOVER' ? 6 : 7;
+      default: return 1;
+    }
+  };
 
   useEffect(() => {
     const c = loadConfig();
@@ -62,27 +374,14 @@ export default function Onboarding() {
     setCfg({ baseUrl: c.baseUrl || 'http://localhost:3000', apiKey: c.apiKey || 'dev', returnUrl: c.returnUrl || defaultReturn });
     setSession(s);
     const discoveredEmail = extractEmail(s) || '';
+    const discoveredAvatar = extractAvatar(s) || '';
+    const discoveredName = extractDisplayName(s) || '';
     const discoveredUid = getUserIdentifier(s) || discoveredEmail;
     if (discoveredEmail) {
       setEmail(discoveredEmail);
-      // Attempt automatic backup discovery via Data API
-      (async () => {
-        try {
-          const appId = c.appId || process.env.NEXT_PUBLIC_APP_ID || '389qiFSo2VPmot3dj6vv';
-          if (appId) {
-            const items = await listBackups({ dataApiBase: c.dataApiBase }, { appId, uid: discoveredUid });
-            if (items && items.length > 0) {
-              setMode('RECOVER');
-              setStep('PIN');
-              setMsg('We found a backup for your account. Enter your PIN to recover.');
-              return;
-            }
-          }
-          setStep('CHOOSE');
-        } catch (_) {
-          setStep('CHOOSE');
-        }
-      })();
+      setAvatar(discoveredAvatar);
+      setDisplayName(discoveredName);
+      setStep('PROFILE'); // Show profile confirmation first
     }
   }, []);
 
@@ -105,6 +404,52 @@ export default function Onboarding() {
     setStep('PIN');
   }
 
+  function proceedToPinConfirm() {
+    if (pin.length !== 4) { 
+      setMsg('Please enter a 4-digit PIN.'); 
+      return; 
+    }
+    setMsg('');
+    setStep('PIN_CONFIRM');
+  }
+
+  function proceedToPassword() {
+    if (pin2.length !== 4 || pin !== pin2) { 
+      setMsg('PINs must match.'); 
+      return; 
+    }
+    setMsg('');
+    setStep('PASSWORD');
+  }
+
+  async function confirmProfile() {
+    setBusy(true);
+    setMsg('Checking for existing wallet...');
+    
+    try {
+      const c = loadConfig();
+      const s = loadSession();
+      const discoveredUid = getUserIdentifier(s) || email;
+      
+      // Attempt automatic backup discovery via Data API
+      const appId = c.appId || process.env.NEXT_PUBLIC_APP_ID || '389qiFSo2VPmot3dj6vv';
+      if (appId) {
+        const items = await listBackups({ dataApiBase: c.dataApiBase }, { appId, uid: discoveredUid });
+        if (items && items.length > 0) {
+          setMode('RECOVER');
+          setStep('PIN');
+          setMsg('We found a backup for your account. Enter your PIN to recover.');
+          return;
+        }
+      }
+      setStep('CHOOSE');
+    } catch (_) {
+      setStep('CHOOSE');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function proceedRecover() {
     setMode('RECOVER');
     setStep('PIN');
@@ -113,13 +458,15 @@ export default function Onboarding() {
   async function createAndBackup() {
     if (pin.length !== 4 || pin2.length !== 4 || pin !== pin2) { setMsg('PINs must match and be 4 digits.'); return; }
     if (password.length < 6 || password !== password2) { setMsg('Passwords must match and be at least 6 characters.'); return; }
-    setBusy(true); setMsg('Creating wallet and backing up...');
+    setBusy(true); 
+    setStep('CREATING');
+    setMsg('Creating wallet and backing up...');
     try {
       // 1) Generate mnemonic (128-bit) and prepare backup (pad -> encryptAndSplitSeed)
       const { generateMnemonic, mnemonicToSeed } = await import('@scure/bip39');
       const { wordlist } = await import('@scure/bip39/wordlists/english');
       const mnemonic = generateMnemonic(wordlist, 128);
-      const { encrypted, shareA, shareB } = await prepareBackupFromMnemonic(mnemonic, { threshold: 2, totalShares: 2 });
+      const { encrypted, shareA, shareB, meta } = await prepareBackupFromMnemonic(mnemonic, { threshold: 2, totalShares: 2 });
 
       // 2) Install Juicebox auth provider and register shareB with PIN
       if (!email) throw new Error('Missing email from OAuth');
@@ -201,8 +548,9 @@ export default function Onboarding() {
 
   async function recoverWithPin() {
     if (pin.length !== 4) { setMsg('Enter your 4-digit PIN.'); return; }
-    if (password.length < 6 || password !== password2) { setMsg('Passwords must match and be at least 6 characters.'); return; }
-    setBusy(true); setMsg('Recovering wallet...');
+    setBusy(true); 
+    setStep('CREATING');
+    setMsg('Recovering wallet...');
     try {
       const c = loadConfig();
       const s = loadSession() || {};
@@ -256,6 +604,9 @@ export default function Onboarding() {
       
       console.log('✅ Mnemonic recovered:', mnemonic.split(' ').length, 'words');
       
+      // Store the recovered mnemonic for the password step
+      setRecoveredMnemonic(mnemonic);
+      
       // Import the wallet with the recovered mnemonic
       const engine = new HDWalletEngine();
       const store = new InMemoryWalletStore();
@@ -270,17 +621,7 @@ export default function Onboarding() {
       const wallet = imported.wallet;
       const accounts = await manager.listAccounts(wallet.id);
       
-      // Convert mnemonic to seed for password encryption
-      const { mnemonicToSeed } = await import('@scure/bip39');
-      const seedUint8Array = await mnemonicToSeed(mnemonic, '');
-      const seedBytes = Buffer.from(seedUint8Array);
-      
-      // Store password-encrypted seed
-      if (wallet) {
-        storePasswordEncryptedSeed(wallet.id, seedBytes, password);
-      }
-      
-      // Save dashboard
+      // Save dashboard (without password encryption yet)
       const dashboard = {
         wallet: wallet ? { id: wallet.id, name: wallet.name } : null,
         accounts: accounts.map(a => ({ chainType: a.chainType, address: a.address, derivationPath: a.derivationPath })),
@@ -295,8 +636,8 @@ export default function Onboarding() {
       };
       
       saveSession({ ...s, dashboard, backupCache });
-      setStep('COMPLETE');
-      setMsg('Wallet recovered successfully.');
+      setStep('PASSWORD');
+      setMsg('Wallet recovered successfully. Now set your daily password.');
       
       // Recovery completed successfully in the direct decryption block above
     } catch (e) {
@@ -308,66 +649,461 @@ export default function Onboarding() {
     }
   }
 
+  async function setDailyPassword() {
+    if (password.length < 6 || password !== password2) { 
+      setMsg('Passwords must match and be at least 6 characters.'); 
+      return; 
+    }
+    if (!recoveredMnemonic) {
+      setMsg('No recovered mnemonic found. Please try the recovery process again.');
+      return;
+    }
+    
+    setBusy(true);
+    setMsg('Setting up your daily password...');
+    
+    try {
+      const s = loadSession();
+      if (s.dashboard && s.dashboard.wallet) {
+        // Convert mnemonic to seed for password encryption
+        const { mnemonicToSeed } = await import('@scure/bip39');
+        const seedUint8Array = await mnemonicToSeed(recoveredMnemonic, '');
+        const seedBytes = Buffer.from(seedUint8Array);
+        
+        // Store password-encrypted seed
+        storePasswordEncryptedSeed(s.dashboard.wallet.id, seedBytes, password);
+        
+        setStep('COMPLETE');
+        setMsg('Daily password set successfully!');
+      } else {
+        throw new Error('No wallet found in session');
+      }
+    } catch (e) {
+      console.error('[PASSWORD] Error setting daily password:', e);
+      setMsg('Failed to set password: ' + (e?.message || String(e)));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (step === 'CREATING') {
+    return (
+      <Screen>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ marginBottom: '1.5rem' }}>
+            <LoadingSpinner size="large" />
+          </div>
+          <Title>{mode === 'CREATE' ? 'Creating Your Wallet' : 'Recovering Your Wallet'}</Title>
+          <Subtitle>
+            {mode === 'CREATE' 
+              ? 'Generating secure keys and setting up your backup...' 
+              : 'Decrypting your backup and restoring your wallet...'
+            }
+            <br />This may take a moment.
+          </Subtitle>
+          {msg && (
+            <div style={{
+              marginTop: '1rem',
+              padding: '1rem',
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              borderRadius: '1rem'
+            }}>
+              <p style={{ color: '#1d4ed8', fontSize: '0.875rem', margin: 0 }}>{msg}</p>
+            </div>
+          )}
+        </div>
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
+      {step !== 'SIGN_IN' && <ProgressBar currentStep={getCurrentStepNumber()} totalSteps={totalSteps} />}
+      
       {step === 'SIGN_IN' && (
-        <>
-          <Title>Sign in to continue</Title>
-          <Sub>Sign in with Google to create or recover your wallet.</Sub>
-          <Button onClick={signIn} disabled={busy}>Sign In with Google</Button>
-          {msg && <div style={{ marginTop: 12, color: '#dc2626' }}>{msg}</div>}
-        </>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ marginBottom: '2rem' }}>
+            <div style={{
+              width: '5rem',
+              height: '5rem',
+              margin: '0 auto 1.5rem auto',
+              filter: 'drop-shadow(0 2px 8px rgba(255, 142, 200, 0.2))',
+              borderRadius: '0.75rem',
+              overflow: 'hidden'
+            }}>
+              <img 
+                src="/assets/logos/light-logo.png" 
+                alt="Jelli Logo" 
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              />
+            </div>
+            <Title>Welcome to Jelli</Title>
+            <Subtitle>Your seedless wallet awaits. Sign in with Google to get started.</Subtitle>
+          </div>
+          
+          <div style={{ marginBottom: '1rem' }}>
+            <Button onClick={signIn} disabled={busy} size="large" loading={busy}>
+              {busy ? (
+                <WhiteSpinner size="large" />
+              ) : (
+                'Sign In with Google'
+              )}
+            </Button>
+          </div>
+          
+          {msg && (
+            <div style={{
+              marginTop: '1.5rem',
+              padding: '1rem',
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              borderRadius: '1rem'
+            }}>
+              <p style={{ color: '#dc2626', fontSize: '0.875rem', margin: 0 }}>{msg}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {step === 'PROFILE' && (
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ marginBottom: '2rem' }}>
+            <div style={{
+              width: '5rem',
+              height: '5rem',
+              borderRadius: '50%',
+              margin: '0 auto 1rem auto',
+              overflow: 'hidden',
+              border: '3px solid #FF8EC8',
+              background: '#f9fafb'
+            }}>
+              {avatar ? (
+                <img 
+                  src={avatar} 
+                  alt={displayName || email} 
+                  style={{ 
+                    width: '100%', 
+                    height: '100%', 
+                    objectFit: 'cover' 
+                  }}
+                />
+              ) : (
+                <div style={{
+                  width: '100%',
+                  height: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: '#f0fdf4'
+                }}>
+                  <span style={{ fontSize: '2rem' }}>👤</span>
+                </div>
+              )}
+            </div>
+            <Title>Welcome{displayName ? `, ${displayName.split(' ')[0]}` : ''}!</Title>
+            <Subtitle>
+              You're signed in as:
+              <br />
+              <strong style={{ color: '#1f2937' }}>{email}</strong>
+            </Subtitle>
+          </div>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <Button 
+              onClick={confirmProfile} 
+              disabled={busy}
+              size="large"
+              loading={busy}
+            >
+              {busy ? (
+                <WhiteSpinner size="large" />
+              ) : (
+                'Continue'
+              )}
+            </Button>
+          </div>
+          
+          {msg && !msg.includes('Checking') && !msg.includes('found') && (
+            <div style={{
+              marginTop: '1.5rem',
+              padding: '1rem',
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              borderRadius: '1rem'
+            }}>
+              <p style={{ color: '#dc2626', fontSize: '0.875rem', margin: 0 }}>{msg}</p>
+            </div>
+          )}
+        </div>
       )}
 
       {step === 'CHOOSE' && (
-        <>
-          <Title>Welcome</Title>
-          <Sub>{email}</Sub>
-          <div style={{ display: 'grid', gap: 10 }}>
-            <Button onClick={proceedCreate}>Create New Wallet</Button>
-            <Button onClick={proceedRecover} variant="secondary">I already have a wallet</Button>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ marginBottom: '2rem' }}>
+            <div style={{
+              width: '4rem',
+              height: '4rem',
+              background: '#f0fdf4',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 1rem auto'
+            }}>
+              <span style={{ fontSize: '1.5rem' }}>👋</span>
+            </div>
+            <Title>Hello there!</Title>
+            <Subtitle>
+              Welcome back, {email.split('@')[0]}
+              <br />What would you like to do?
+            </Subtitle>
           </div>
-        </>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <Button onClick={proceedCreate} size="large">
+              ✨ Create New Wallet
+            </Button>
+            <Button onClick={proceedRecover} variant="outline">
+              🔑 I already have a wallet
+            </Button>
+          </div>
+        </div>
       )}
 
       {step === 'PIN' && mode === 'CREATE' && (
-        <>
-          <Title>Create a PIN</Title>
-          <Sub>We’ll use your PIN to protect a backup share with Juicebox. Don’t share this PIN.</Sub>
-          <PinInput value={pin} onChange={setPin} label="Enter 4-digit PIN" />
-          <PinInput value={pin2} onChange={setPin2} label="Confirm PIN" />
-          <div style={{ marginTop: 12 }}>
-            <label style={{ display: 'block', fontSize: 12, opacity: 0.7, marginBottom: 6 }}>Daily Password (min 6 chars)</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter password" style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid #8884', marginBottom: 8 }} />
-            <input type="password" value={password2} onChange={(e) => setPassword2(e.target.value)} placeholder="Confirm password" style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid #8884' }} />
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ marginBottom: '2rem' }}>
+            <div style={{
+              width: '4rem',
+              height: '4rem',
+              background: '#f3e8ff',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 1rem auto'
+            }}>
+              <span style={{ fontSize: '1.5rem' }}>🔐</span>
+            </div>
+            <Title>Create Your PIN</Title>
+            <Subtitle>
+              Choose a 4-digit PIN to secure your wallet backup.
+              <br />You'll need this to recover your wallet.
+            </Subtitle>
           </div>
-          <Button onClick={createAndBackup} disabled={busy || pin.length !== 4 || pin2.length !== 4 || !password || !password2}>Continue</Button>
-          {msg && <div style={{ marginTop: 12, color: '#dc2626' }}>{msg}</div>}
-        </>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <PinInput 
+              value={pin} 
+              onChange={setPin} 
+              label="Enter your 4-digit PIN"
+            />
+            
+            <Button 
+              onClick={proceedToPinConfirm} 
+              disabled={pin.length !== 4}
+              size="large"
+            >
+              Continue
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {step === 'PIN_CONFIRM' && mode === 'CREATE' && (
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ marginBottom: '2rem' }}>
+            <div style={{
+              width: '4rem',
+              height: '4rem',
+              background: '#f3e8ff',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 1rem auto'
+            }}>
+              <span style={{ fontSize: '1.5rem' }}>🔐</span>
+            </div>
+            <Title>Confirm Your PIN</Title>
+            <Subtitle>
+              Enter your PIN again to confirm.
+            </Subtitle>
+          </div>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <PinInput 
+              value={pin2} 
+              onChange={setPin2} 
+              label="Confirm your 4-digit PIN"
+            />
+            
+            <Button 
+              onClick={proceedToPassword} 
+              disabled={pin2.length !== 4 || pin !== pin2}
+              size="large"
+            >
+              Continue
+            </Button>
+          </div>
+        </div>
       )}
 
       {step === 'PIN' && mode === 'RECOVER' && (
-        <>
-          <Title>Enter Your PIN</Title>
-          <Sub>We found a backup for your account. Enter your PIN to recover, then set a daily password.</Sub>
-          <PinInput value={pin} onChange={setPin} label="4-digit PIN" />
-          <div style={{ marginTop: 12 }}>
-            <label style={{ display: 'block', fontSize: 12, opacity: 0.7, marginBottom: 6 }}>Daily Password (min 6 chars)</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter new password" style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid #8884', marginBottom: 8 }} />
-            <input type="password" value={password2} onChange={(e) => setPassword2(e.target.value)} placeholder="Confirm password" style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid #8884' }} />
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ marginBottom: '2rem' }}>
+            <div style={{
+              width: '4rem',
+              height: '4rem',
+              background: '#dbeafe',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 1rem auto'
+            }}>
+              <span style={{ fontSize: '1.5rem' }}>🔓</span>
+            </div>
+            <Title>Welcome Back!</Title>
+            <Subtitle>
+              We found your wallet backup.
+              <br />Enter your PIN to recover it.
+            </Subtitle>
           </div>
-          <Button onClick={recoverWithPin} disabled={busy || pin.length !== 4 || !password || !password2}>Recover Wallet</Button>
-          {msg && <div style={{ marginTop: 12, color: '#dc2626' }}>{msg}</div>}
-        </>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <PinInput 
+              value={pin} 
+              onChange={setPin} 
+              label="Enter your 4-digit PIN"
+            />
+            
+            <Button 
+              onClick={recoverWithPin} 
+              disabled={busy || pin.length !== 4}
+              size="large"
+              loading={busy}
+            >
+              {busy ? (
+                <WhiteSpinner size="large" />
+              ) : (
+                'Recover My Wallet'
+              )}
+            </Button>
+          </div>
+          
+          {msg && !msg.includes('We found a backup') && (
+            <div style={{
+              marginTop: '1.5rem',
+              padding: '1rem',
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              borderRadius: '1rem'
+            }}>
+              <p style={{ color: '#dc2626', fontSize: '0.875rem', margin: 0 }}>{msg}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {step === 'PASSWORD' && (
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ marginBottom: '2rem' }}>
+            <div style={{
+              width: '4rem',
+              height: '4rem',
+              background: '#f0f9ff',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 1rem auto'
+            }}>
+              <span style={{ fontSize: '1.5rem' }}>🔐</span>
+            </div>
+            <Title>Set Daily Password</Title>
+            <Subtitle>
+              {mode === 'CREATE' ? 'Almost done! Set a password for daily access.' : 'Great! Your wallet is recovered. Now set a password for daily access.'}
+            </Subtitle>
+          </div>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div style={{ textAlign: 'left' }}>
+              <label style={{
+                display: 'block',
+                fontSize: '0.875rem',
+                fontWeight: '500',
+                color: '#374151',
+                marginBottom: '0.5rem'
+              }}>
+                Daily Password
+              </label>
+              <PasswordInput
+                value={password}
+                onChange={setPassword}
+                placeholder="Enter a secure password"
+              />
+              <PasswordInput
+                value={password2}
+                onChange={setPassword2}
+                placeholder="Confirm your password"
+              />
+              <p style={{
+                fontSize: '0.75rem',
+                color: '#6b7280',
+                marginTop: '0.5rem',
+                marginBottom: 0
+              }}>
+                Minimum 6 characters required
+              </p>
+            </div>
+            
+            <Button 
+              onClick={mode === 'CREATE' ? createAndBackup : setDailyPassword} 
+              disabled={busy || password.length < 6 || password !== password2}
+              size="large"
+              loading={busy}
+            >
+              {busy ? (
+                <WhiteSpinner size="large" />
+              ) : (
+                mode === 'CREATE' ? 'Create My Wallet' : 'Set Password'
+              )}
+            </Button>
+          </div>
+        </div>
       )}
 
       {step === 'COMPLETE' && (
-        <>
-          <Title>All set</Title>
-          <Sub>Your wallet backup is protected with your PIN. You’ll need it to recover.</Sub>
-          <Button onClick={() => window.location.href = '/'}>Finish</Button>
-          {msg && <div style={{ marginTop: 12 }}>{msg}</div>}
-        </>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ marginBottom: '2rem' }}>
+            <div style={{
+              width: '5rem',
+              height: '5rem',
+              background: '#f0fdf4',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 1.5rem auto',
+              animation: 'pulse 2s infinite'
+            }}>
+              <span style={{ fontSize: '2.25rem' }}>🎉</span>
+            </div>
+            <Title>All Set!</Title>
+            <Subtitle>
+              Your wallet has been {mode === 'CREATE' ? 'created' : 'recovered'} successfully.
+              <br />Your backup is secure and ready to use.
+            </Subtitle>
+          </div>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <Button onClick={() => window.location.href = '/'} size="large">
+              🚀 Open My Wallet
+            </Button>
+          </div>
+        </div>
       )}
     </Screen>
   );

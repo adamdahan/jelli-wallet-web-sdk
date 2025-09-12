@@ -3,18 +3,24 @@ export const metadata = { title: 'Jelli OAuth Next.js', description: 'Minimal PK
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
+      <head>
+        <style>{`
+          @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+          @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+          }
+        `}</style>
+      </head>
       <body style={{
         fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
         margin: 0,
-        padding: 24,
+        padding: 0,
       }}>
-        <header style={{ marginBottom: 16 }}>
-          <h1 style={{ fontSize: 20, margin: '0 0 8px' }}>Jelli OAuth Next.js</h1>
-          <div style={{ opacity: 0.7, fontSize: 12 }}>Minimal PKCE client for jelli-oauth-backend</div>
-        </header>
-        <main>
-          {children}
-        </main>
+        {children}
       </body>
     </html>
   );
