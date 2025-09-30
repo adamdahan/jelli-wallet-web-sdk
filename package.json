@@ -3,12 +3,12 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "next dev -p 3000",
+    "dev": "next dev -p 4000",
     "build": "next build",
-    "start": "next start -p 3000"
+    "start": "next start -p 4000"
   },
   "dependencies": {
-    "@iheartsolana/jelli-core": "file:../../Developer/iheartsolana/jelli/jelli-core/iheartsolana-jelli-core-0.7.39.tgz",
+    "@iheartsolana/jelli-core": "file:../jelli-core",
     "@noble/ciphers": "^1.0.0",
     "@scure/bip39": "^1.2.2",
     "buffer": "^6.0.3",
